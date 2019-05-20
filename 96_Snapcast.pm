@@ -380,7 +380,6 @@ sub Snapcast_updateClient($$$){
   }
   $hash->{STATUS}->{clients}->{"$cnumber"}=$c;
   my $id=$c->{id}? $c->{id} : $c->{host}->{mac};    # protocol version 2 has no id, but just the MAC, newer versions will have an ID. 
-  $id=~s/\://g;
   $hash->{STATUS}->{clients}->{"$cnumber"}->{id}=$id;
 
   my $clientmodule = $hash->{$id};
