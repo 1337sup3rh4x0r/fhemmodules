@@ -380,7 +380,6 @@ sub Snapcast_updateClient($$$){
   }
   $hash->{STATUS}->{clients}->{"$cnumber"}=$c;
   my $id=$c->{id}? $c->{id} : $c->{host}->{mac};    # protocol version 2 has no id, but just the MAC, newer versions will have an ID. 
-  $id=~s/\://g;
   $hash->{STATUS}->{clients}->{"$cnumber"}->{id}=$id;
 
   my $clientmodule = $hash->{$id};
@@ -419,19 +418,6 @@ sub Snapcast_updateClient($$$){
     Snapcast_setClient($hash,$clienthash->{ID},"volume",$maxvol);
   }
   return undef;
-}
-
-sub Snapcast_deleteClient($$$){
-  my ($hash,$id) = @_;
-  my $name = $hash->{NAME};
-  my $paramset;
-  my $cnumber = ReadingsVal($name,"clients_".$id."_nr","");
-  return undef unless defined($cnumber);
-  my $method="Server.DeleteClient";
-  $paramset->{client}=ReadingsVal($hash,"clients_".$id."_mac","");
-  Snapcast_Do($hash,$method,$paramset);
-  readingsSingleUpdate($hash,"state","Client Deleted: $cnumber",1);
-  Snapcast_getStatus($hash);
 }
 
 sub Snapcast_updateStream($$$){
@@ -539,8 +525,7 @@ sub Snapcast_setClient($$$$){
   my $paramset;
   my $cnumber = ReadingsVal($name,"clients_".$id."_nr","");
   return undef unless defined($cnumber);
-  #$paramset->{client}=ReadingsVal($name,"clients_".$id."_mac","");
-  $paramset->{id}=ReadingsVal($name,"clients_".$id."_mac",""); # client identifier renamed from "client" to "id" in snapcast 0.11 JSON format
+  $paramset->{id}=$id;
   return undef unless defined($Snapcast_clientmethods{$param});
   $method=$Snapcast_clientmethods{$param};
   if($param eq "volumeConstraint"){
@@ -666,9 +651,12 @@ sub Snapcast_getStreamNumber($$){
 sub Snapcast_getId($$){
   my ($hash,$client) = @_;
   my $name = $hash->{NAME};
-  if($client=~/^([0-9a-f]{2}([:-]|$)){6}$/i){ # client is already a MAC
+  if($client=~/^([0-9a-f]{2}([:-]|\#*\d*|$)){6}$/i){ # client is already a MAC or ID
     for(my $i=1;$i<=ReadingsVal($name,"clients",1);$i++){
-      if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{host}->{mac}) {
+      if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{id}) {
+        return $hash->{STATUS}->{clients}->{"$i"}->{id};
+      }
+      elsif ($client eq $hash->{STATUS}->{clients}->{"$i"}->{host}->{mac}) {
         return $hash->{STATUS}->{clients}->{"$i"}->{id};
       }
     }
