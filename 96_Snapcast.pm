@@ -525,7 +525,7 @@ sub Snapcast_setClient($$$$){
   my $paramset;
   my $cnumber = ReadingsVal($name,"clients_".$id."_nr","");
   return undef unless defined($cnumber);
-  $paramset->{id}=$id
+  $paramset->{id}=$id;
   return undef unless defined($Snapcast_clientmethods{$param});
   $method=$Snapcast_clientmethods{$param};
   if($param eq "volumeConstraint"){
