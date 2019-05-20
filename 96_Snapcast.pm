@@ -421,19 +421,6 @@ sub Snapcast_updateClient($$$){
   return undef;
 }
 
-sub Snapcast_deleteClient($$$){
-  my ($hash,$id) = @_;
-  my $name = $hash->{NAME};
-  my $paramset;
-  my $cnumber = ReadingsVal($name,"clients_".$id."_nr","");
-  return undef unless defined($cnumber);
-  my $method="Server.DeleteClient";
-  $paramset->{client}=ReadingsVal($hash,"clients_".$id."_mac","");
-  Snapcast_Do($hash,$method,$paramset);
-  readingsSingleUpdate($hash,"state","Client Deleted: $cnumber",1);
-  Snapcast_getStatus($hash);
-}
-
 sub Snapcast_updateStream($$$){
   my ($hash,$s,$snumber) = @_;
   my $name = $hash->{NAME};
