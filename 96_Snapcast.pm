@@ -651,9 +651,12 @@ sub Snapcast_getStreamNumber($$){
 sub Snapcast_getId($$){
   my ($hash,$client) = @_;
   my $name = $hash->{NAME};
-  if($client=~/^([0-9a-f]{2}([:-]|$)){6}$/i){ # client is already a MAC
+  if($client=~/^([0-9a-f]{2}([:-]|\#*\d*|$)){6}$/i){ # client is already a MAC or ID
     for(my $i=1;$i<=ReadingsVal($name,"clients",1);$i++){
-      if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{host}->{mac}) {
+      if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{id}) {
+        return $hash->{STATUS}->{clients}->{"$i"}->{id};
+      }
+      elsif ($client eq $hash->{STATUS}->{clients}->{"$i"}->{host}->{mac}) {
         return $hash->{STATUS}->{clients}->{"$i"}->{id};
       }
     }
