@@ -76,7 +76,7 @@ sub Snapcast_Initialize($) {
     $hash->{AttrFn}     = 'Snapcast_Attr';
     $hash->{ReadFn}     = 'Snapcast_Read';
     $hash->{AttrList} =
-          "streamnext:all,playing constraintDummy constraints volumeStepSize volumeStepSizeSmall volumeStepSizeThreshold"
+          "streamnext:all,playing constraintDummy constraints volumeStepSize volumeStepSizeSmall volumeStepSizeThreshold "
         . $readingFnAttributes;
 }
 
