@@ -56,9 +56,7 @@ my %Snapcast_client_sets = (
 my %Snapcast_clientmethods = (
     "name"             => "Client.SetName",
     "volume"           => "Client.SetVolume",
-    #"mute"             => "Group.SetMute",
     "mute"             => "Client.SetVolume",
-    #"stream"           => "Client.SetStream",
     "stream"           => "Group.SetStream",
     "latency"          => "Client.SetLatency"
 );
@@ -76,8 +74,7 @@ sub Snapcast_Initialize($) {
     $hash->{AttrFn}     = 'Snapcast_Attr';
     $hash->{ReadFn}     = 'Snapcast_Read';
     $hash->{AttrList} =
-          "streamnext:all,playing constraintDummy constraints volumeStepSize volumeStepSizeSmall volumeStepSizeThreshold "
-        . $readingFnAttributes;
+          "streamnext:all,playing constraintDummy constraints volumeStepSize volumeStepSizeSmall volumeStepSizeThreshold " . $readingFnAttributes;
 }
 
 sub Snapcast_Define($$) {
@@ -165,6 +162,7 @@ sub Snapcast_Set($@) {
   my $name = shift @param;
   my $opt = shift @param;
   my $value = join(" ", @param);
+#  my $clientmod;
   my %sets = ($hash->{MODE} eq "client") ? %Snapcast_client_sets : %Snapcast_sets;
   if(!defined($sets{$opt})) {
     my @cList = keys %sets;
@@ -184,11 +182,10 @@ sub Snapcast_Set($@) {
       $client=$hash->{NAME};
       $hash=$hash->{SERVER};
       $hash=$defs{$hash};
-      $client=$clientmod->{ID};
+      $client = $clientmod->{ID};
       return "Cannot find Server hash" unless defined ($hash);
     }else{
       $client = shift @param;
-      $client = Snapcast_getId($hash,$client) unless $client eq "all";
     }
     $value = join(" ", @param);
     return "client not found, use unique name, IP, or MAC as client identifier" unless defined($client);
@@ -226,12 +223,11 @@ sub Snapcast_Read($){
   }
   
   ###############################
-  #Log3 $name,2, "Buffer: $buf";
+  # Log3 $name,2, "Buffer: $buf";
   ###############################
 
   my @lines = split( /\n/, $buf );
   foreach my $line (@lines) {
-    #Log3 $name,2, "line: $line ";
     # Hier die Results parsen
     my $decoded_json;
     eval {
@@ -257,17 +253,12 @@ sub Snapcast_Read($){
       }
       while ( my ($key, $value) = each %Snapcast_clientmethods){ 
         if(($value eq $hash->{"IDLIST"}->{$id}->{method}) && $key ne "mute"){ #exclude mute here because muting is now integrated in SetVolume
-          #my $client = $hash->{"IDLIST"}->{$id}->{params}->{client};
           my $client = $hash->{"IDLIST"}->{$id}->{params}->{id};
-          #Log3 $name,2, "client: $client ";
-          #Log3 $name,2, "key: $key ";
-          #Log3 $name,2, "value: $value ";
 
           $client=~s/\://g;
-          #$key=~s/mute/muted/g;
-          #if($key eq "muted"){
-          #  $update->{result}  = $update->{result} ? "true" : "false";
-          #}
+          Log3 $name,2, "client: $client ";
+          Log3 $name,2, "key: $key ";
+          Log3 $name,2, "value: $value ";
           if($key eq "volume"){
             my $temp_percent = $update->{result}->{volume}->{percent};
             #Log3 $name,2, "percent: $temp_percent ";
@@ -278,9 +269,12 @@ sub Snapcast_Read($){
             my $clientmodule = $hash->{$client};
             my $clienthash=$defs{$clientmodule};
             my $maxvol = Snapcast_getVolumeConstraint($clienthash);
-            #if($update->{result} > $maxvol){
-            #  Snapcast_setClient($hash,$clienthash->{ID},"volume",$maxvol);
-            #}
+            if (defined $clientmodule) {
+              readingsBeginUpdate($clienthash); 
+              readingsBulkUpdateIfChanged($clienthash,"muted",$update->{result}->{volume}->{muted} );
+              readingsBulkUpdateIfChanged($clienthash,"volume",$update->{result}->{volume}->{percent} );
+              readingsEndUpdate($clienthash,1);
+            }
           }
           elsif($key eq "stream"){
             #Log3 $name,2, "key: $key ";
@@ -290,16 +284,23 @@ sub Snapcast_Read($){
               $client = $hash->{STATUS}->{clients}->{"$i"}->{id};
               my $client_group = ReadingsVal($hash->{NAME},"clients_".$client."_group","");
               #Log3 $name,2, "client_group: $client_group ";
+              my $clientmodule = $hash->{$client};
+              my $clienthash=$defs{$clientmodule};
               if ($group eq $client_group) {          
                 readingsBeginUpdate($hash); 
                 readingsBulkUpdateIfChanged($hash,"clients_".$client."_stream_id",$update->{result}->{stream_id} );
                 readingsEndUpdate($hash,1);
+                if (defined $clientmodule) {
+                  readingsBeginUpdate($clienthash); 
+                  readingsBulkUpdateIfChanged($clienthash,"stream_id",$update->{result}->{stream_id} );
+                  readingsEndUpdate($clienthash,1);
+                }
               }
             }
           }
           else{
             readingsBeginUpdate($hash); 
-            readingsBulkUpdateIfChanged($hash,"clients_".$client."_".$key,$update->{result} );
+            readingsBulkUpdateIfChanged($hash,"clients_".$client."_".$key,$update->{result});
             readingsEndUpdate($hash,1);
             my $clientmodule = $hash->{$client};
             my $clienthash=$defs{$clientmodule};
@@ -380,7 +381,10 @@ sub Snapcast_updateClient($$$){
   }
   $hash->{STATUS}->{clients}->{"$cnumber"}=$c;
   my $id=$c->{id}? $c->{id} : $c->{host}->{mac};    # protocol version 2 has no id, but just the MAC, newer versions will have an ID. 
+  my $orig_id = $id;
+  $id =~ s/://g;
   $hash->{STATUS}->{clients}->{"$cnumber"}->{id}=$id;
+  $hash->{STATUS}->{clients}->{"$cnumber"}->{origid}=$orig_id;
 
   my $clientmodule = $hash->{$id};
   my $clienthash=$defs{$clientmodule};
@@ -395,6 +399,7 @@ sub Snapcast_updateClient($$$){
     readingsBulkUpdateIfChanged($hash,"clients_".$id."_ip",$c->{host}->{ip} );
     readingsBulkUpdateIfChanged($hash,"clients_".$id."_mac",$c->{host}->{mac}); 
     readingsBulkUpdateIfChanged($hash,"clients_".$id."_id",$id); 
+    readingsBulkUpdateIfChanged($hash,"clients_".$id."_origid",$orig_id); 
     readingsBulkUpdateIfChanged($hash,"clients_".$id."_nr",$cnumber); 
     readingsBulkUpdateIfChanged($hash,"clients_".$id."_group",$c->{config}->{group_id}); 
   readingsEndUpdate($hash,1);
@@ -411,6 +416,7 @@ sub Snapcast_updateClient($$$){
     readingsBulkUpdateIfChanged($clienthash,"ip",$c->{host}->{ip} );
     readingsBulkUpdateIfChanged($clienthash,"mac",$c->{host}->{mac}); 
     readingsBulkUpdateIfChanged($clienthash,"id",$id); 
+    readingsBulkUpdateIfChanged($clienthash,"origid",$orig_id); 
     readingsBulkUpdateIfChanged($clienthash,"group",$c->{config}->{group_id}); 
   readingsEndUpdate($clienthash,1);
   my $maxvol = Snapcast_getVolumeConstraint($clienthash);
@@ -476,7 +482,6 @@ sub Snapcast_getStatus($){
 sub Snapcast_parseStatus($$){
   my ($hash,$status) = @_;
   my $streams=$status->{result}->{server}->{streams};
-  #my $clients=$status->{result}->{clients}; # old snapcast format up to 0.10
   my $groups=$status->{result}->{server}->{groups};
   my $server=$status->{result}->{server}->{server};
 
@@ -515,7 +520,7 @@ sub Snapcast_parseStatus($$){
     readingsBulkUpdateIfChanged($hash,"streams",$snumber-1 );
     readingsEndUpdate($hash,1);
   }
-    InternalTimer(gettimeofday() + 300, "Snapcast_getStatus", $hash, 1); # every minute, get the full update, also to apply changed vol constraints. 
+    InternalTimer(gettimeofday() + 300, "Snapcast_getStatus", $hash, 1); # every 5 Minutes, get the full update, also to apply changed vol constraints. 
 }
 
 sub Snapcast_setClient($$$$){
@@ -525,7 +530,7 @@ sub Snapcast_setClient($$$$){
   my $paramset;
   my $cnumber = ReadingsVal($name,"clients_".$id."_nr","");
   return undef unless defined($cnumber);
-  $paramset->{id}=$id;
+  $paramset->{id} = Snapcast_getId($hash,$id);
   return undef unless defined($Snapcast_clientmethods{$param});
   $method=$Snapcast_clientmethods{$param};
   if($param eq "volumeConstraint"){
@@ -534,12 +539,13 @@ sub Snapcast_setClient($$$$){
     return "not enough parameters for volumeConstraint" unless @values>=2;
     if(@values%2){ # there is a match argument given because number is uneven
       $match=pop(@values);
-    }else{$match="_global_"}
+    } else {
+      $match="_global_";
+    }
     for(my $i=0;$i<@values;$i+=2){
       return "wrong timeformat 00:00 - 24:00 for time/volume pair" unless $values[$i]=~/^(([0-1]?[0-9]|2[0-3]):[0-5][0-9])|24:00$/;
       return "wrong volumeformat 0 - 100 for time/volume pair" unless $values[$i+1]=~/^(0?[0-9]?[0-9]|100)$/;
     }
-    #readingsSingleUpdate($hash,"volumeConstraint_".$mac."_".$match,$value,1);
     return undef;
   }
   if($param eq "stream"){
@@ -556,28 +562,25 @@ sub Snapcast_setClient($$$$){
   }
 
   if($param eq "volume"){
-    my $muteState;
+    my $currentVol = ReadingsVal($name,"clients_".$id."_volume","");
+    my $muteState = ReadingsVal($name,"clients_".$id."_muted","");
+    return undef unless defined($currentVol);
+
     # check if volume was given as increment or decrement, then find out current volume and calculate new volume
     if($value=~/^([\+\-])(\d{1,2})$/){
       my $direction = $1;
       my $amount = $2;
-      my $currentVol = ReadingsVal($name,"clients_".$id."_volume","");
-      $muteState = ReadingsVal($name,"clients_".$id."_muted","");
-      return undef unless defined($currentVol);
-      if($direction eq "+"){$value = $currentVol + $amount;}else{$value = $currentVol - $amount;}
+      $value = eval($currentVol. $direction. $amount);
       $value = 100 if ($value >= 100);
       $value = 0 if ($value <0);
     }
     # if volume is given with up or down argument, then increase or decrease according to volumeStepSize
     if($value=~/^(up|down)$/){
-      my $currentVol = ReadingsVal($name,"clients_".$id."_volume","");
-      $muteState = ReadingsVal($name,"clients_".$id."_mute","");
-      return undef unless defined($currentVol);
       my $step = AttrVal($name,"volumeStepSizeThreshold",0) > $currentVol ? AttrVal($name,"volumeStepSizeSmall",3) : AttrVal($name,"volumeStepSize",7);
       if ($value eq "up"){$value = $currentVol + $step;}else{$value = $currentVol - $step;}
       $value = 100 if ($value >= 100);
       $value = 0 if ($value <0);
-      Snapcast_setClient($hash,$id,"mute","false") if $value > 0 && ($muteState eq "true" || $muteState ==1) ;
+      $muteState = "false"  if $value > 0 && ($muteState eq "true" || $muteState == 1);
     }
     my $volumeobject->{muted} = $muteState;
     $volumeobject->{percent} = $value+0;
@@ -589,12 +592,11 @@ sub Snapcast_setClient($$$$){
     my $volumeobject->{muted} = $value;
     $volumeobject->{percent} = $currentVol+0;
     $value = $volumeobject;
-  #  $paramset->{id} = ReadingsVal($name,"clients_".$id."_group",""); # for setting mute we now use group id instead of client id in snapcast 0.11 JSON format
-  
-    if($param eq "mute" && (not (defined($value)) || $value eq '')){
+ 
+    if(not (defined($value->{muted})) || $value->{muted} eq ''){
       my $muteState = ReadingsVal($name,"clients_".$id."_muted","");
       my $currentVol = ReadingsVal($name,"clients_".$id."_volume","");
-      $value = $muteState eq "true" || $muteState ==1 ? "false" : "true";
+      $value = $muteState eq "true" || $muteState == 1 ? "false" : "true";
       my $volumeobject->{muted} = $value;
       $volumeobject->{percent} = $currentVol+0;
       $value = $volumeobject;
@@ -651,27 +653,12 @@ sub Snapcast_getStreamNumber($$){
 sub Snapcast_getId($$){
   my ($hash,$client) = @_;
   my $name = $hash->{NAME};
-  if($client=~/^([0-9a-f]{2}([:-]|\#*\d*|$)){6}$/i){ # client is already a MAC or ID
+  if($client=~/^([0-9a-f]{12}(\#*\d*|$))$/i){ # client is  ID
     for(my $i=1;$i<=ReadingsVal($name,"clients",1);$i++){
       if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{id}) {
-        return $hash->{STATUS}->{clients}->{"$i"}->{id};
-      }
-      elsif ($client eq $hash->{STATUS}->{clients}->{"$i"}->{host}->{mac}) {
-        return $hash->{STATUS}->{clients}->{"$i"}->{id};
+        return $hash->{STATUS}->{clients}->{"$i"}->{origid};
       }
     }
-  }
-  if($client =~ qr/^(?!(\.))(\.?(\d{1,3})(?(?{$^N > 255})(*FAIL))){4}$/){ # client is given as IP address
-    for(my $i=1;$i<=ReadingsVal($name,"clients",1);$i++){
-    if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{host}->{ip}) {
-        return $hash->{STATUS}->{clients}->{"$i"}->{id};
-      }
-    }
-  }
-  for(my $i=1;$i<=ReadingsVal($name,"clients",1);$i++){
-    if ($client eq $hash->{STATUS}->{clients}->{"$i"}->{config}->{name}) {
-        return $hash->{STATUS}->{clients}->{"$i"}->{id};
-      }
   }
   return "unknown client";
 }
