@@ -269,10 +269,12 @@ sub Snapcast_Read($){
             my $clientmodule = $hash->{$client};
             my $clienthash=$defs{$clientmodule};
             my $maxvol = Snapcast_getVolumeConstraint($clienthash);
-            readingsBeginUpdate($clienthash); 
-            readingsBulkUpdateIfChanged($clienthash,"muted",$update->{result}->{volume}->{muted} );
-            readingsBulkUpdateIfChanged($clienthash,"volume",$update->{result}->{volume}->{percent} );
-            readingsEndUpdate($clienthash,1);
+            if (defined $clientmodule) {
+              readingsBeginUpdate($clienthash); 
+              readingsBulkUpdateIfChanged($clienthash,"muted",$update->{result}->{volume}->{muted} );
+              readingsBulkUpdateIfChanged($clienthash,"volume",$update->{result}->{volume}->{percent} );
+              readingsEndUpdate($clienthash,1);
+            }
           }
           elsif($key eq "stream"){
             #Log3 $name,2, "key: $key ";
@@ -282,15 +284,17 @@ sub Snapcast_Read($){
               $client = $hash->{STATUS}->{clients}->{"$i"}->{id};
               my $client_group = ReadingsVal($hash->{NAME},"clients_".$client."_group","");
               #Log3 $name,2, "client_group: $client_group ";
-            my $clientmodule = $hash->{$client};
-            my $clienthash=$defs{$clientmodule};
+              my $clientmodule = $hash->{$client};
+              my $clienthash=$defs{$clientmodule};
               if ($group eq $client_group) {          
                 readingsBeginUpdate($hash); 
                 readingsBulkUpdateIfChanged($hash,"clients_".$client."_stream_id",$update->{result}->{stream_id} );
                 readingsEndUpdate($hash,1);
-                readingsBeginUpdate($clienthash); 
-                readingsBulkUpdateIfChanged($clienthash,"stream_id",$update->{result}->{stream_id} );
-                readingsEndUpdate($clienthash,1);
+                if (defined $clientmodule) {
+                  readingsBeginUpdate($clienthash); 
+                  readingsBulkUpdateIfChanged($clienthash,"stream_id",$update->{result}->{stream_id} );
+                  readingsEndUpdate($clienthash,1);
+                }
               }
             }
           }
